@@ -86,7 +86,7 @@ function Purchase() {
 
   return (
     <div className="purchase">
-      <h1 className="page-title">Shop</h1>
+      <header className="shop-heading"><p className="eyebrow">FIND YOUR NEXT FAVORITE</p><h1 className="page-title">The Collection</h1><p>Five distinctive pieces. Endless ways to make them your own.</p></header>
 
       <div className="purchase-layout">
         <section className="catalog" aria-label="Products">
