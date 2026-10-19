@@ -21,12 +21,12 @@ const executives = [
   },
   {
     number: '03',
-    name: '',
-    image: '',
-    role: 'Director of Data & Supply Chain',
-    education: '[Add degree and university]',
-    experience: '[Add relevant roles, projects, and dates]',
-    passions: '[Describe your interest in databases and supply chain planning]',
+    name: 'Anna Krivoy',
+    image: '/images/anna.jpg',
+    role: 'Director of Data and Engineering',
+    education: 'BSCIS @ The Ohio State University',
+    experience: 'Marathon Petroleum Corporation, Software Engineer Intern 2026.05-2026.08',
+    passions: 'Anna is a software engineer with a passion for people, design, and high-level product thinking. She cares about building intentional products that solve real problems and spark a little joy along the way.',
   },
 ]
 
