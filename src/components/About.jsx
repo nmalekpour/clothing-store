@@ -12,12 +12,12 @@ const executives = [
   },
   {
     number: '02',
-    name: '',
-    image: '',
+    name: 'Niki Malekpour',
+    image: '/images/niki.jpg',
     role: 'Director of Product & Engineering',
-    education: '[Add degree and university]',
-    experience: '[Add relevant roles, projects, and dates]',
-    passions: '[Describe your interest in full-stack development and product content]',
+    education: 'BSCSE @ The Ohio State University',
+    experience: 'WillowTree, Software Engineering Intern | 2026.05–2026.08',
+    passions: 'Niki enjoys full-stack development and building polished products from the interface down to the code behind it, with a strong focus on user experience and attention to detail.',
   },
   {
     number: '03',
