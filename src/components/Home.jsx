@@ -1,7 +1,11 @@
 import { Link } from 'react-router-dom'
-import { PRODUCTS } from '../data/products'
+import useInventory from '../useInventory'
+import InventoryStatus from './InventoryStatus'
 
 export default function Home() {
+  const inventory = useInventory()
+  const { products } = inventory
+  const hero = products[0]
   return (
     <div className="home-page">
       <section className="hero">
@@ -12,13 +16,15 @@ export default function Home() {
           <Link className="btn btn-primary" to="/purchase">Explore the collection <span aria-hidden="true">↗</span></Link>
           <span className="hero-caption">Simple pieces. Endless possibilities.</span>
         </div>
-        <div className="hero-image"><img src="/images/sage-dress.jpeg" alt="Sage Dress from the Clothing Store collection" /><span>01 / THE SAGE DRESS</span></div>
+        <div className="hero-image">{hero && <><img src={hero.image} alt={hero.name} /><span>{hero.name}</span></>}</div>
       </section>
 
       <section className="featured-section" aria-labelledby="featured-heading">
-        <div className="section-heading"><div><p className="eyebrow">A FEW FAVORITES</p><h2 id="featured-heading">The Selected Edit</h2></div><Link className="text-link" to="/purchase">View all five pieces <span aria-hidden="true">→</span></Link></div>
+        <div className="section-heading"><div><p className="eyebrow">A FEW FAVORITES</p><h2 id="featured-heading">The Selected Edit</h2></div><Link className="text-link" to="/purchase">View the collection <span aria-hidden="true">→</span></Link></div>
+        <InventoryStatus {...inventory} />
+        {!inventory.loading && !inventory.error && !products.length && <p>No products are available right now.</p>}
         <div className="featured-grid">
-          {[PRODUCTS[0], PRODUCTS[2], PRODUCTS[4]].map((product) => <Link className="featured-product" to="/purchase" key={product.id}>
+          {products.slice(0, 3).map((product) => <Link className="featured-product" to="/purchase" key={product.id}>
             <div className="product-image"><img src={product.image} alt={product.name} loading="lazy" /></div>
             <div><h3>{product.name}</h3><span>{product.price.toLocaleString('en-US', { style: 'currency', currency: 'USD' })}</span></div>
           </Link>)}

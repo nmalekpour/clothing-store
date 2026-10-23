@@ -31,8 +31,11 @@ function PaymentEntry() {
     event.preventDefault()
 
     localStorage.setItem('paymentInfo', JSON.stringify(paymentInfo))
-
-    alert('Payment information saved!')
+    if (event.nativeEvent.submitter?.value === 'continue') {
+      navigate('/purchase/shippingEntry')
+    } else {
+      alert('Payment information saved!')
+    }
   }
 
   const handleClear = () => {
@@ -46,11 +49,6 @@ function PaymentEntry() {
 
     setPaymentInfo(emptyPayment)
     localStorage.removeItem('paymentInfo')
-  }
-
-  const handleContinue = () => {
-    localStorage.setItem('paymentInfo', JSON.stringify(paymentInfo))
-    navigate('/purchase/shippingEntry')
   }
 
   return (
@@ -135,7 +133,7 @@ function PaymentEntry() {
           Clear Payment
         </button>
 
-        <button type="button" onClick={handleContinue}>
+        <button type="submit" value="continue">
           Continue to Shipping
         </button>
       </form>

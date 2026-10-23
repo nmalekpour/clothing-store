@@ -1,16 +1,15 @@
 import { useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
-import { PRODUCTS, emptyOrder } from '../data/products'
-
-function loadCart() {
-  const savedCart = localStorage.getItem('cart')
-  return savedCart ? JSON.parse(savedCart) : PRODUCTS.map(() => 0)
-}
+import { useNavigate } from 'react-router-dom'
+import { loadCart } from '../cart'
+import useInventory from '../useInventory'
+import useQuote from '../useQuote'
+import QuoteStatus from './QuoteStatus'
+import InventoryStatus from './InventoryStatus'
 
 const formatPrice = (amount) =>
   amount.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
 
-function Stepper({ value, min, onChange, label }) {
+function Stepper({ value, min, max, onChange, label }) {
   return (
     <div className="stepper">
       <button
@@ -24,11 +23,12 @@ function Stepper({ value, min, onChange, label }) {
       <input
         type="number"
         min={min}
+        max={max}
         aria-label={label}
         value={value}
         onChange={(event) => onChange(parseInt(event.target.value, 10) || min)}
       />
-      <button type="button" aria-label={`Increase ${label}`} onClick={() => onChange(value + 1)}>
+      <button type="button" aria-label={`Increase ${label}`} disabled={value >= max} onClick={() => onChange(value + 1)}>
         +
       </button>
     </div>
@@ -37,14 +37,11 @@ function Stepper({ value, min, onChange, label }) {
 
 function Purchase() {
   const navigate = useNavigate()
-  const location = useLocation()
-
-  // Cart = order.buyQuantity, restored when coming back from a later page.
-  const [cart, setCart] = useState(
-    () => location.state?.order?.buyQuantity ?? loadCart(),
-  )
-  // Quantity picked on each catalog card before clicking "Add to cart".
-  const [pending, setPending] = useState(PRODUCTS.map(() => 1))
+  const { products, loading, error, reload } = useInventory()
+  const [cart, setCart] = useState(loadCart)
+  const pricing = useQuote(cart)
+  const { quote } = pricing
+  const [pending, setPending] = useState({})
   const [justAdded, setJustAdded] = useState(null)
 
   const updateCart = (nextCart) => {
@@ -53,44 +50,45 @@ function Purchase() {
   }
 
   const setQuantity = (index, quantity) => {
-    const nextCart = [...cart]
-    nextCart[index] = Math.max(0, quantity || 0)
+    const nextCart = { ...cart }
+    const stock = products.find(product => product.id === index)?.availableQty ?? 0
+    nextCart[index] = Math.min(stock, Math.max(0, quantity || 0))
     updateCart(nextCart)
   }
 
   const setPendingQuantity = (index, quantity) => {
-    const nextPending = [...pending]
+    const nextPending = { ...pending }
     nextPending[index] = Math.max(1, quantity)
     setPending(nextPending)
   }
 
   const addToCart = (index) => {
-    setQuantity(index, cart[index] + pending[index])
+    setQuantity(index, (cart[index] || 0) + (pending[index] || 1))
     setPendingQuantity(index, 1)
     setJustAdded(index)
     setTimeout(() => setJustAdded((current) => (current === index ? null : current)), 1200)
   }
 
-  const cartLines = PRODUCTS.filter((product) => cart[product.id] > 0)
-  const itemCount = cart.reduce((sum, quantity) => sum + quantity, 0)
-  const total = cartLines.reduce(
-    (sum, product) => sum + product.price * cart[product.id],
-    0,
-  )
+  const cartLines = products.filter((product) => cart[product.id] > 0)
+  const itemCount = quote?.itemCount
+  const cartIssue = !!quote?.unavailable.length
+    || Object.keys(cart).some(id => cart[id] > 0 && !products.some(product => String(product.id) === id))
 
   const handleCheckout = (event) => {
     event.preventDefault()
-    const order = { ...emptyOrder(), ...location.state?.order, buyQuantity: cart }
-    navigate('/purchase/paymentEntry', { state: { order } })
+    if (loading || error || !cartLines.length || cartIssue || !quote) return
+    navigate('/purchase/paymentEntry')
   }
 
   return (
     <div className="purchase">
-      <header className="shop-heading"><p className="eyebrow">FIND YOUR NEXT FAVORITE</p><h1 className="page-title">The Collection</h1><p>Five distinctive pieces. Endless ways to make them your own.</p></header>
+      <header className="shop-heading"><p className="eyebrow">FIND YOUR NEXT FAVORITE</p><h1 className="page-title">The Collection</h1><p>Distinctive pieces. Endless ways to make them your own.</p></header>
 
+      <InventoryStatus loading={loading} error={error} reload={reload} />
+      {!loading && !error && !products.length && <p role="status">No products are available right now.</p>}
       <div className="purchase-layout">
         <section className="catalog" aria-label="Products">
-          {PRODUCTS.map((product) => (
+          {products.map((product) => (
             <article key={product.id} className="product-card">
               <div className="product-image">
                 <img src={product.image} alt={product.name} />
@@ -101,17 +99,21 @@ function Purchase() {
               <div className="product-info">
                 <h3>{product.name}</h3>
                 <p className="price">{formatPrice(product.price)}</p>
+                <p>{product.description}</p>
+                <p>{product.availableQty > 0 ? `${product.availableQty} available` : 'Out of stock'}</p>
               </div>
               <div className="product-actions">
                 <Stepper
                   label={`${product.name} quantity`}
                   min={1}
-                  value={pending[product.id]}
+                  max={Math.max(1, product.availableQty - (cart[product.id] || 0))}
+                  value={Math.min(pending[product.id] || 1, Math.max(1, product.availableQty - (cart[product.id] || 0)))}
                   onChange={(quantity) => setPendingQuantity(product.id, quantity)}
                 />
                 <button
                   type="button"
                   className="btn"
+                  disabled={loading || !!error || (cart[product.id] || 0) >= product.availableQty}
                   onClick={() => addToCart(product.id)}
                 >
                   {justAdded === product.id ? 'Added ✓' : 'Add to bag'}
@@ -124,7 +126,7 @@ function Purchase() {
         <aside className="cart">
           <form onSubmit={handleCheckout}>
             <h2>
-              Your Bag <span className="cart-count">({itemCount})</span>
+              Your Bag <span className="cart-count">({itemCount ?? '…'})</span>
             </h2>
 
             {cartLines.length === 0 ? (
@@ -137,12 +139,13 @@ function Purchase() {
                     <div className="cart-line-body">
                       <div className="cart-line-top">
                         <span className="cart-line-name">{product.name}</span>
-                        <span>{formatPrice(product.price * cart[product.id])}</span>
+                        <span>{quote?.items.find(item => item.id === product.id) ? formatPrice(quote.items.find(item => item.id === product.id).subtotal) : '…'}</span>
                       </div>
                       <div className="cart-line-bottom">
                         <Stepper
                           label={`${product.name} quantity in bag`}
                           min={0}
+                          max={product.availableQty}
                           value={cart[product.id]}
                           onChange={(quantity) => setQuantity(product.id, quantity)}
                         />
@@ -160,15 +163,17 @@ function Purchase() {
               </ul>
             )}
 
+            {!loading && !error && cartIssue && <p className="order-notice" role="alert">Some items are no longer available in the requested quantity. Adjust your bag or <button type="button" onClick={() => updateCart({})}>clear your bag</button>.</p>}
+            <QuoteStatus {...pricing} />
             <div className="cart-total">
               <span>Total</span>
-              <span>{formatPrice(total)}</span>
+              <span>{quote ? formatPrice(quote.total) : '—'}</span>
             </div>
 
             <button
               type="submit"
               className="btn btn-primary btn-block"
-              disabled={cartLines.length === 0}
+              disabled={loading || !!error || cartIssue || !quote || cartLines.length === 0}
             >
               Checkout
             </button>

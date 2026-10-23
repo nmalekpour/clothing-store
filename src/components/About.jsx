@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import useInventory from '../useInventory'
+import InventoryStatus from './InventoryStatus'
 
 const executives = [
   {
@@ -41,12 +43,14 @@ function TeamPortrait({ person }) {
 }
 
 export default function About() {
+  const inventory = useInventory()
+  const storyProduct = inventory.products[0]
   return (
     <div className="about-page">
       <header className="editorial-heading"><p className="eyebrow">GET TO KNOW US</p><h1>A thoughtful edit.<br /><em>A shared vision.</em></h1><p>Clothing Store brings together thoughtfully selected clothing and accessories, connecting everyday simplicity with individual expression.</p></header>
       <section className="story-grid" aria-labelledby="story-heading">
-        <div className="story-image"><img src="/images/coat.jpeg" alt="Classic Peacoat from our collection" loading="lazy" /></div>
-        <div className="story-copy"><p className="eyebrow">OUR STORY</p><h2 id="story-heading">Fewer distractions.<br />More personal style.</h2><p>Our collection brings together clothing and accessories that can stand on their own or work together: a simple white tank, wide-leg pants, a flowing sage dress, a classic peacoat, and a distinctive necklace.</p><p>We built this store around clear product presentation and an easy-to-follow shopping journey, giving every piece room to speak for itself.</p></div>
+        <div className="story-image"><InventoryStatus {...inventory} />{storyProduct && <img src={storyProduct.image} alt={storyProduct.name} loading="lazy" />}</div>
+        <div className="story-copy"><p className="eyebrow">OUR STORY</p><h2 id="story-heading">Fewer distractions.<br />More personal style.</h2><p>Our collection brings together clothing and accessories that can stand on their own or work together, giving you room to express your personal style.</p><p>We built this store around clear product presentation and an easy-to-follow shopping journey, giving every piece room to speak for itself.</p></div>
       </section>
       <section className="values-grid" aria-label="Mission, vision, and strategy">
         <article><p className="eyebrow">01 / OUR MISSION</p><h2>Confidence, every day.</h2><p>To help customers express their personal style through a considered selection of clothing and accessories and an approachable shopping experience.</p></article>

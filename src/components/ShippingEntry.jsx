@@ -14,7 +14,10 @@ function ShippingEntry() {
     zip: '',
   }
 
-  const [address, setAddress] = useState(emptyAddress)
+  const [address, setAddress] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('selectedShippingAddress')) || emptyAddress }
+    catch { return emptyAddress }
+  })
 
   const [savedAddresses, setSavedAddresses] = useState(() => {
     const saved = localStorage.getItem('shippingAddresses')
@@ -50,7 +53,7 @@ function ShippingEntry() {
 
     alert('Address saved!')
 
-    setAddress(emptyAddress)
+    setAddress(newAddress)
   }
 
   const handleSelectAddress = (savedAddress) => {
@@ -71,6 +74,7 @@ function ShippingEntry() {
   }
 
   const handleContinue = () => {
+    if (!document.getElementById('shipping-form').reportValidity()) return
     localStorage.setItem('selectedShippingAddress', JSON.stringify(address))
 
     navigate('/purchase/viewOrder')
@@ -80,7 +84,7 @@ function ShippingEntry() {
     <div className="shipping-entry">
       <h2>Shipping Information</h2>
 
-      <form onSubmit={handleSaveAddress}>
+      <form id="shipping-form" onSubmit={handleSaveAddress}>
         <div>
           <label htmlFor="name">Address Name</label>
           <input

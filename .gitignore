@@ -12,6 +12,11 @@ dist
 dist-ssr
 *.local
 
+# Keep local environment settings out of Git; commit the template instead.
+.env
+.env.*
+!.env.example
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -25,3 +30,6 @@ dist-ssr
 
 __pycache__/
 *.pyc
+
+# Lambda deployment packages and backups
+artifacts/

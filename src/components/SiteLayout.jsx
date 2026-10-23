@@ -3,16 +3,19 @@ import { Link, NavLink, useLocation } from 'react-router-dom'
 
 const links = [['/', 'Home'], ['/purchase', 'Shop'], ['/about', 'About Us'], ['/contact', 'Contact Us']]
 
-export default function SiteLayout({ children }) {
-  const { pathname, hash } = useLocation()
-  const checkout = pathname.startsWith('/purchase/')
-  const steps = [
+const steps = [
     ['/purchase', 'Bag'],
     ['/purchase/paymentEntry', 'Payment'],
     ['/purchase/shippingEntry', 'Shipping'],
     ['/purchase/viewOrder', 'Review'],
     ['/purchase/viewConfirmation', 'Confirmation'],
   ]
+const currentYear = new Date().getFullYear()
+
+export default function SiteLayout({ children }) {
+  const { pathname, hash } = useLocation()
+  const checkout = pathname.startsWith('/purchase/')
+
 
   useEffect(() => {
     const title = links.find(([path]) => path === pathname)?.[1]
@@ -51,7 +54,7 @@ export default function SiteLayout({ children }) {
           <div><h2>Explore</h2><Link to="/">Home</Link><Link to="/purchase">Shop the collection</Link><Link to="/about">About us</Link></div>
           <div><h2>Customer Care</h2><Link to="/contact">Contact us</Link><Link to="/contact#returns">Returns & support</Link><Link to="/contact#faq">Frequently asked questions</Link></div>
         </div>
-        <div className="footer-bottom"><span>© {new Date().getFullYear()} Clothing Store</span><span>A considered collection. A style of your own.</span></div>
+        <div className="footer-bottom"><span>© {currentYear} Clothing Store</span><span>A considered collection. A style of your own.</span></div>
       </footer>
     </>
   )
