@@ -1,7 +1,8 @@
-"""Inspect the existing order integration, then optionally deploy its Lambda.
+"""Inspect an existing API integration, then optionally deploy its Lambda (bundled with requirements.txt).
 
-Read-only check: python3 scripts/deploy_order.py --profile lab7
-Deploy:         python3 scripts/deploy_order.py --profile lab7 --deploy
+Read-only check: python3 scripts/deploy_lambda.py --service order --profile lab7
+Deploy:         python3 scripts/deploy_lambda.py --service order --profile lab7 --deploy
+Package only:   python3 scripts/deploy_lambda.py --service inventory --package   (writes artifacts/, no AWS calls)
 """
 import argparse
 import base64
@@ -17,15 +18,52 @@ from urllib.request import urlopen
 from zipfile import ZipFile
 
 ROOT = Path(__file__).resolve().parents[1]
+# service -> (API resource path, HTTP method, backend directory)
+SERVICES = {
+    'order': ('/order-processing/order', 'POST', 'order-processing'),
+    'inventory': ('/inventory-management/inventory', 'GET', 'inventory'),
+}
+
+
+def build_package(source, package, module='lambda_function'):
+    """Zip the handler as `module`.py together with the packages in its requirements.txt."""
+    with tempfile.TemporaryDirectory(prefix='lambda-deps-') as deps:
+        requirements = source / 'requirements.txt'
+        if requirements.exists():
+            subprocess.run([sys.executable, '-m', 'pip', 'install', '--quiet', '--disable-pip-version-check',
+                            '-r', str(requirements), '--target', deps], check=True)
+        with ZipFile(package, 'w') as archive:
+            archive.write(source / 'lambda_function.py', f'{module}.py')
+            # The handler looks for the RDS CA bundle next to itself.
+            archive.write(ROOT / 'backend/db/rds-ca.pem', str(Path(module).parent / 'rds-ca.pem'))
+            parts = module.split('/')[:-1]
+            for index in range(len(parts)):
+                archive.writestr('/'.join(parts[:index + 1]) + '/__init__.py', '')
+            for path in sorted(Path(deps).rglob('*')):
+                if path.is_file() and '__pycache__' not in path.parts and not path.parent.name.endswith('.dist-info'):
+                    archive.write(path, path.relative_to(deps).as_posix())
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--service', choices=SERVICES, default='order')
     parser.add_argument('--profile', default='lab7')
     parser.add_argument('--region', default='us-east-2')
     parser.add_argument('--api-id', default='xnigucru41')
     parser.add_argument('--deploy', action='store_true')
+    parser.add_argument('--package', action='store_true', help='only build artifacts/<service>.zip; no AWS calls')
     args = parser.parse_args()
+    route, http_method, folder = SERVICES[args.service]
+    source = ROOT / 'backend' / folder
+    tests = source / 'test_lambda.py'
+
+    if args.package:
+        subprocess.run([sys.executable, '-B', str(tests)], check=True)
+        (ROOT / 'artifacts').mkdir(exist_ok=True)
+        package = ROOT / 'artifacts' / f'{folder}.zip'
+        build_package(source, package)
+        print(f'Built {package.relative_to(ROOT)} (handler lambda_function.lambda_handler).')
+        return
 
     def aws(*command):
         result = subprocess.run(['aws', *command, '--profile', args.profile, '--region', args.region,
@@ -35,11 +73,11 @@ def main():
         return json.loads(result.stdout) if result.stdout.strip() else None
 
     resources = aws('apigateway', 'get-resources', '--rest-api-id', args.api_id)
-    resource = next((item for item in resources['items'] if item['path'] == '/order-processing/order'), None)
+    resource = next((item for item in resources['items'] if item['path'] == route), None)
     if resource is None:
-        raise RuntimeError('The existing /order-processing/order resource was not found; no changes made.')
+        raise RuntimeError(f'The existing {route} resource was not found; no changes made.')
     integration = aws('apigateway', 'get-integration', '--rest-api-id', args.api_id,
-                      '--resource-id', resource['id'], '--http-method', 'POST')
+                      '--resource-id', resource['id'], '--http-method', http_method)
     if integration.get('type') != 'AWS_PROXY':
         raise RuntimeError('Expected Lambda proxy integration; no changes made.')
     match = re.search(r'/functions/(arn:[^/]+)/invocations', unquote(integration.get('uri', '')))
@@ -57,20 +95,16 @@ def main():
         print('Read-only check passed. Add --deploy to upload the tested Lambda code.')
         return
 
-    subprocess.run([sys.executable, '-B', str(ROOT / 'backend/order-processing/test_lambda.py')], check=True)
+    subprocess.run([sys.executable, '-B', str(tests)], check=True)
     module = config['Handler'].rsplit('.', 1)[0].replace('.', '/')
-    with tempfile.TemporaryDirectory(prefix='lab7-order-') as directory:
-        package = Path(directory) / 'order-processing.zip'
-        with ZipFile(package, 'w') as archive:
-            archive.write(ROOT / 'backend/order-processing/lambda_function.py', f'{module}.py')
-            parts = module.split('/')[:-1]
-            for index in range(len(parts)):
-                archive.writestr('/'.join(parts[:index + 1]) + '/__init__.py', '')
+    with tempfile.TemporaryDirectory(prefix=f'lab-{args.service}-') as directory:
+        package = Path(directory) / f'{folder}.zip'
+        build_package(source, package, module)
         # Save the current code before replacing it; do not print its signed download URL.
         previous = aws('lambda', 'get-function', '--function-name', arn, '--query', 'Code.Location')
         backup_dir = ROOT / 'artifacts'
         backup_dir.mkdir(exist_ok=True)
-        backup_path = backup_dir / f"order-previous-{config['RevisionId']}.zip"
+        backup_path = backup_dir / f"{args.service}-previous-{config['RevisionId']}.zip"
         with urlopen(previous, timeout=30) as response:
             backup_path.write_bytes(response.read())
         checksum = base64.b64encode(hashlib.sha256(package.read_bytes()).digest()).decode()

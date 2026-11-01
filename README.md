@@ -105,29 +105,73 @@ Then run:
 
 ```bash
 # Read-only: verify that the profile can access the existing API and Lambda.
-python3 scripts/deploy_order.py --profile lab7
+python3 scripts/deploy_lambda.py --service order --profile lab7
 # Run backend regression tests, back up the existing code, and update its Lambda.
-python3 scripts/deploy_order.py --profile lab7 --deploy
+python3 scripts/deploy_lambda.py --service order --profile lab7 --deploy
 ```
 
-The script discovers the existing POST integration in API `xnigucru41` in `us-east-2`,
+Use `--service inventory` for the inventory Lambda. The script discovers the existing
+integration (`POST /order-processing/order` or `GET /inventory-management/inventory`) in API `xnigucru41` in `us-east-2`,
 checks the runtime and handler, uses the Lambda revision to avoid overwriting concurrent
 changes, and verifies the uploaded checksum. It changes no API Gateway routes or IAM.
 Lambda aliases/versions require their existing release process; the script stops if
 one is detected. Since routes/integrations remain unchanged, this Lambda code update
 does not require an API Gateway stage deployment.
 
-For manual console upload, `artifacts/order-processing.zip` contains `lambda_function.py`;
-use it only for the existing Order Lambda with handler `lambda_function.lambda_handler`.
-The ZIP can be regenerated with:
+For manual console upload, build the ZIPs (runs the tests, makes no AWS calls):
 
 ```bash
-python3 -m zipfile -c artifacts/order-processing.zip backend/order-processing/lambda_function.py
+python3 scripts/deploy_lambda.py --service order --package       # artifacts/order-processing.zip
+python3 scripts/deploy_lambda.py --service inventory --package   # artifacts/inventory.zip
 ```
+
+Each ZIP contains `lambda_function.py`, `pymysql`, and the RDS CA bundle; upload it only to the
+matching existing Lambda with handler `lambda_function.lambda_handler`.
 
 After deployment, verify duplicate IDs with quantities 7 and 7 against stock 12 return
 409 with `requestedQty: 14`; preview returns totals with no confirmation; normal checkout
 returns a confirmation and matching server total. Then complete the browser flow again.
+
+## Lab 8 data tier (AWS RDS MySQL)
+
+Inventory and orders live in the RDS MySQL instance `database-1` (us-east-2), database `clothingstore`.
+
+- `backend/db/schema.sql` creates `ITEM`, `CUSTOMER_ORDER`, `CUSTOMER_ORDER_LINE_ITEM`,
+  `PAYMENT_INFO`, and `SHIPPING_INFO` and seeds the five products. **It drops those tables first.**
+  `ITEM.ITEM_NUMBER` is the product `id` the API and cart use; `ITEM.IMAGE` holds the frontend image path.
+- `backend/db/test_order.sql` inserts one order by hand and reads it back with a join.
+- The inventory Lambda reads `ITEM`. The order Lambda reads stock and prices from `ITEM`, then in one
+  transaction (with the requested `ITEM` rows locked) saves shipping, payment, the order and its line
+  items, and subtracts the ordered quantities from `ITEM.AVAILABLE_QUANTITY`. Previews read only.
+- Both Lambdas connect with TLS verified against `backend/db/rds-ca.pem` (Amazon's public RDS CA bundle)
+  and read `DB_HOST`, `DB_USER`, `DB_PASSWORD`, and optionally `DB_NAME` (default `clothingstore`)
+  from their environment variables. Never commit the password.
+- The Lambdas run in the database's VPC with no internet access, so the order Lambda reads `ITEM`
+  directly instead of calling the inventory API.
+
+`PAYMENT_INFO` stores the card number and CVV because the lab schema requires it. Use test cards only;
+a real store must never keep CVVs and would store a payment-processor token instead of the card number.
+
+### One-time AWS setup
+
+1. Connect as the master user (password in Secrets Manager) and run both SQL files:
+   `mysql -h <endpoint> -u admin -p < backend/db/schema.sql`.
+2. Create an app user for the Lambdas. The master password rotates in Secrets Manager, and a
+   VPC Lambda cannot reach Secrets Manager without a paid endpoint:
+   ```sql
+   CREATE USER 'store_app'@'%' IDENTIFIED BY '<choose a password>' REQUIRE SSL;
+   GRANT SELECT ON clothingstore.ITEM TO 'store_app'@'%';
+   GRANT UPDATE (AVAILABLE_QUANTITY) ON clothingstore.ITEM TO 'store_app'@'%';
+   GRANT INSERT ON clothingstore.CUSTOMER_ORDER TO 'store_app'@'%';
+   GRANT INSERT ON clothingstore.CUSTOMER_ORDER_LINE_ITEM TO 'store_app'@'%';
+   GRANT INSERT ON clothingstore.PAYMENT_INFO TO 'store_app'@'%';
+   GRANT INSERT ON clothingstore.SHIPPING_INFO TO 'store_app'@'%';
+   ```
+3. For **each** Lambda: Configuration → VPC → the database's VPC, its subnets, and security group
+   `ec2-rds-1` (the database's `rds-ec2-1` group already allows MySQL from it; check its inbound rule).
+   The execution role needs `AWSLambdaVPCAccessExecutionRole`. Set the environment variables above
+   (`DB_USER=store_app`) and raise the timeout to 15 seconds.
+4. Upload the ZIPs (or use `--deploy`), then run `python3 scripts/verify_api.py`.
 
 Additional backend checks:
 
@@ -136,7 +180,8 @@ python3 -B backend/inventory/test_lambda.py
 python3 -B backend/order-processing/test_lambda.py
 ```
 
-After deploying, run all live API checks (including synthetic lab orders):
+After deploying, run all live API checks (including synthetic lab orders). Since Lab 8,
+each run saves one test order to the database and takes 1 unit of that item's stock:
 
 ```bash
 python3 scripts/verify_api.py
