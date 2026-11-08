@@ -17,7 +17,7 @@ def main():
                           method=method or ('POST' if body is not None else 'GET'),
                           headers={'Content-Type': 'application/json', 'Origin': 'http://localhost:5173', **(headers or {})})
         try:
-            response = urlopen(request, timeout=25)
+            response = urlopen(request, timeout=30)
         except HTTPError as error:
             response = error
         with response:
@@ -48,7 +48,10 @@ def main():
     assert preview['itemCount'] == 1 and preview['items'][0]['quantity'] == 1
     print('PASS: preview returns server prices without creating a confirmation')
 
-    details = {'payment': {'cardholderName': 'Lab API Test'}, 'shipping': {'fullName': 'Lab API Test'}}
+    details = {'payment': {'cardholderName': 'Lab API Test', 'cardNumber': '4111111111111111',
+                           'expirationDate': '12/30', 'cvv': '123'},
+               'shipping': {'fullName': 'Lab API Test', 'address': '1 Main St',
+                            'city': 'Columbus', 'state': 'OH', 'zip': '43210'}}
     status, shortage = call(order_path, {**details, 'items': [{'id': item_id, 'quantity': stock}, {'id': item_id, 'quantity': 1}]})
     assert status == 409 and 'confirmationNumber' not in shortage, 'Duplicate IDs bypass stock check'
     assert shortage['unavailable'] == [{'id': item_id, 'requestedQty': stock + 1, 'availableQty': stock}]

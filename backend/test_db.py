@@ -21,7 +21,7 @@ class Cursor:
         self._cursor.close()
 
     def execute(self, sql, params=()):
-        sql = sql.replace('%s', '?').replace(' FOR UPDATE', '')
+        sql = sql.replace('%s', '?').replace(' FOR UPDATE', '').replace('INSERT IGNORE', 'INSERT OR IGNORE')
         return self._cursor.execute(sql, params)
 
     def executemany(self, sql, rows):
@@ -41,11 +41,11 @@ class Cursor:
 class Connection:
     open = True
 
-    def __init__(self):
+    def __init__(self, schema=SCHEMA):
         self.db = sqlite3.connect(':memory:', isolation_level=None)
-        script = SCHEMA.read_text()
+        script = Path(schema).read_text()
         script = re.sub(r'^(CREATE DATABASE|USE)\b.*$', '', script, flags=re.M | re.I)
-        script = re.sub(r'\bint auto_increment primary key', 'INTEGER PRIMARY KEY AUTOINCREMENT', script, flags=re.I)
+        script = re.sub(r'\b(?:bigint|int) auto_increment primary key', 'INTEGER PRIMARY KEY AUTOINCREMENT', script, flags=re.I)
         self.db.executescript(script)
 
     def cursor(self):
